@@ -39,12 +39,12 @@ depending on the number of comments available.
 import json
 import os
 import re
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 import streamlit as st
+from yt_dlp import YoutubeDL
 
 
 def run_yt_dlp(args: List[str]) -> None:
