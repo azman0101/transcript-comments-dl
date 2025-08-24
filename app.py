@@ -47,44 +47,18 @@ import streamlit as st
 from yt_dlp import YoutubeDL
 
 
-def run_yt_dlp(args: List[str]) -> None:
-    """Run a yt‑dlp command and raise an exception if it fails.
-
-    The function is separated for easier mocking during tests.  It calls
-    ``subprocess.run`` with the provided arguments and checks the return code.
-
-    Parameters
-    ----------
-    args:
-        A list of command line arguments to pass directly to ``yt‑dlp``.
-
-    Raises
-    ------
-    RuntimeError
-        If ``yt‑dlp`` returns a non‑zero exit status.
-    """
-    result = subprocess.run(args, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"yt‑dlp failed with status {result.returncode}:\n"
-            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-        )
-
-
 def fetch_comments(video_url: str, work_dir: Path) -> List[str]:
     """Download and parse YouTube comments using yt‑dlp.
 
-    yt‑dlp can write comments into the JSON metadata file when invoked with
-    ``--write-comments``.  We specify a custom output template so that the
-    resulting ``.info.json`` file has a predictable name based on the video ID.
+    yt‑dlp can extract comments directly when configured with appropriate options.
+    We use the extract_info method to get video information including comments.
 
     Parameters
     ----------
     video_url:
         The full YouTube URL provided by the user.
     work_dir:
-        A directory in which to store temporary files.  The JSON file will be
-        created here.
+        A directory in which to store temporary files if needed.
 
     Returns
     -------
@@ -99,29 +73,25 @@ def fetch_comments(video_url: str, work_dir: Path) -> List[str]:
     if not video_id_match:
         raise ValueError("Impossible d'extraire l'identifiant de la vidéo.")
     video_id = video_id_match.group(0)
-    json_path = work_dir / f"{video_id}.info.json"
 
-    # Construct yt‑dlp command.  We always skip downloading the media.
-    cmd = [
-        "yt-dlp",
-        "--skip-download",
-        "--write-info-json",
-        "--write-comments",
-        "-o",
-        str(work_dir / f"{video_id}"),
-        video_url,
-    ]
-    run_yt_dlp(cmd)
+    # Configure yt-dlp options for extracting comments and info
+    ydl_opts = {
+        'skip_download': True,         # Don't download the video file
+        'writeinfojson': True,         # Write video info to JSON
+        'writecomments': True,         # Extract comments
+        'outtmpl': str(work_dir / f"{video_id}"),  # Output template
+        'quiet': True,                 # Reduce output noise
+        'no_warnings': True,           # Suppress warnings in the logs
+    }
 
-    if not json_path.exists():
-        raise FileNotFoundError(
-            f"Fichier JSON introuvable : {json_path}. Assurez-vous que yt‑dlp est correctement installé."
-        )
+    with YoutubeDL(ydl_opts) as ydl:
+        try:
+            info_dict = ydl.extract_info(video_url, download=False)
+        except Exception as e:
+            raise RuntimeError(f"yt-dlp failed to extract video info: {str(e)}")
 
-    with json_path.open("r", encoding="utf-8") as f:
-        info = json.load(f)
-
-    comments_raw = info.get("comments") or []
+    # Extract comments from the info dict
+    comments_raw = info_dict.get("comments") or []
     comments_text: List[str] = []
     for comment in comments_raw:
         # Some entries use the key "text", others use "txt".  We normalise
