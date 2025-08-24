@@ -77,19 +77,30 @@ def fetch_comments(video_url: str, work_dir: Path) -> List[str]:
     # Configure yt-dlp options for extracting comments and info
     ydl_opts = {
         'skip_download': True,         # Don't download the video file
-        'getcomments': True,           # Extract comments into info dict
+        'writecomments': True,         # Extract comments
+        'writeinfojson': True,         # Write info to JSON to capture comments
+        'outtmpl': str(work_dir / f"{video_id}"),  # Output template
         'quiet': True,                 # Reduce output noise
         'no_warnings': True,           # Suppress warnings in the logs
     }
 
     with YoutubeDL(ydl_opts) as ydl:
         try:
+            # This will create a .info.json file with comments
             info_dict = ydl.extract_info(video_url, download=False)
         except Exception as e:
             raise RuntimeError(f"yt-dlp failed to extract video info: {str(e)}")
 
-    # Extract comments from the info dict
+    # Check if we have comments in the info dict directly
     comments_raw = info_dict.get("comments") or []
+    
+    # If no comments in info dict, try to read from the JSON file
+    if not comments_raw:
+        json_path = work_dir / f"{video_id}.info.json"
+        if json_path.exists():
+            with json_path.open("r", encoding="utf-8") as f:
+                info = json.load(f)
+            comments_raw = info.get("comments") or []
     comments_text: List[str] = []
     for comment in comments_raw:
         # Some entries use the key "text", others use "txt".  We normalise
@@ -167,84 +178,50 @@ def fetch_transcript(video_url: str, work_dir: Path, language: str = "fr") -> Tu
 
     base_output = work_dir / f"{video_id}"
 
-    # Configure yt-dlp options for extracting subtitles info
+    # Configure yt-dlp options for extracting subtitles
     ydl_opts = {
         'skip_download': True,         # Don't download the video file
-        'writesubtitles': False,       # Don't write subtitle files
-        'writeautomaticsub': False,    # Don't write auto-generated subtitle files
-        'listsubtitles': False,        # We don't just want a list
+        'writesubtitles': True,        # Download manual subtitles
+        'writeautomaticsub': True,     # Download auto-generated subtitles as fallback
+        'subtitlesformat': 'srt',      # Request SRT format
+        'subtitleslangs': [language],  # Request specific language
+        'outtmpl': str(base_output),   # Output template
         'quiet': True,                 # Reduce output noise
         'no_warnings': True,           # Suppress warnings in the logs
     }
 
     with YoutubeDL(ydl_opts) as ydl:
         try:
+            # This will download subtitle files to the work directory
             info_dict = ydl.extract_info(video_url, download=False)
         except Exception as e:
             raise RuntimeError(f"yt-dlp failed to extract video info: {str(e)}")
 
-    # Try to get subtitles from info dict first
-    subtitles = info_dict.get('subtitles', {})
-    automatic_captions = info_dict.get('automatic_captions', {})
-    
+    # Look for files like <video_id>.<lang>.srt
+    possible_files = list(work_dir.glob(f"{video_id}.*.srt"))
     selected_lang = ""
+    subtitle_path: Optional[Path] = None
+    
+    for file in possible_files:
+        suffix_parts = file.name.split(".")
+        if len(suffix_parts) >= 3:
+            lang_code = suffix_parts[-2]  # filename format: <id>.<lang>.srt
+            if lang_code == language:
+                subtitle_path = file
+                selected_lang = lang_code
+                break
+    
+    # If not found, fall back to the first available language
+    if subtitle_path is None and possible_files:
+        subtitle_path = possible_files[0]
+        parts = subtitle_path.name.split(".")
+        selected_lang = parts[-2] if len(parts) >= 3 else language
+
     transcript = ""
-    
-    # First try manual subtitles in the requested language
-    if language in subtitles and subtitles[language]:
-        selected_lang = language
-        subtitle_info = subtitles[language][0]  # Take first available format
-        # Download the subtitle content
-        sub_url = subtitle_info.get('url')
-        if sub_url:
-            try:
-                with YoutubeDL({'quiet': True, 'no_warnings': True}) as sub_ydl:
-                    sub_content = sub_ydl.urlopen(sub_url).read().decode('utf-8')
-                    transcript = parse_srt_contents(sub_content)
-            except Exception:
-                transcript = ""
-    
-    # If no manual subtitles, try automatic captions
-    if not transcript and language in automatic_captions and automatic_captions[language]:
-        selected_lang = language
-        caption_info = automatic_captions[language][0]  # Take first available format
-        # Download the caption content
-        cap_url = caption_info.get('url')
-        if cap_url:
-            try:
-                with YoutubeDL({'quiet': True, 'no_warnings': True}) as cap_ydl:
-                    cap_content = cap_ydl.urlopen(cap_url).read().decode('utf-8')
-                    transcript = parse_srt_contents(cap_content)
-            except Exception:
-                transcript = ""
-    
-    # If still no transcript, try fallback to English
-    if not transcript:
-        for fallback_lang in ['en', 'en-US', 'en-GB']:
-            if fallback_lang in subtitles and subtitles[fallback_lang]:
-                selected_lang = fallback_lang
-                subtitle_info = subtitles[fallback_lang][0]
-                sub_url = subtitle_info.get('url')
-                if sub_url:
-                    try:
-                        with YoutubeDL({'quiet': True, 'no_warnings': True}) as sub_ydl:
-                            sub_content = sub_ydl.urlopen(sub_url).read().decode('utf-8')
-                            transcript = parse_srt_contents(sub_content)
-                            break
-                    except Exception:
-                        continue
-            elif fallback_lang in automatic_captions and automatic_captions[fallback_lang]:
-                selected_lang = fallback_lang
-                caption_info = automatic_captions[fallback_lang][0]
-                cap_url = caption_info.get('url')
-                if cap_url:
-                    try:
-                        with YoutubeDL({'quiet': True, 'no_warnings': True}) as cap_ydl:
-                            cap_content = cap_ydl.urlopen(cap_url).read().decode('utf-8')
-                            transcript = parse_srt_contents(cap_content)
-                            break
-                    except Exception:
-                        continue
+    if subtitle_path and subtitle_path.exists():
+        with subtitle_path.open("r", encoding="utf-8") as f:
+            contents = f.read()
+        transcript = parse_srt_contents(contents)
 
     return selected_lang, transcript
 
