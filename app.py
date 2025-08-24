@@ -4,7 +4,7 @@ Streamlit Web App to Fetch YouTube Transcript and Comments
 
 This Streamlit application provides a simple user interface for retrieving the
 transcript (subtitles) and top‑level comments from a YouTube video.  It uses
-``yt‑dlp`` under the hood to download the comments and subtitles for a given
+the ``yt‑dlp`` Python module to download the comments and subtitles for a given
 video URL.  The resulting transcript and comments are displayed directly in
 the browser and can optionally be downloaded as plain text files.
 
@@ -224,8 +224,7 @@ def main() -> None:
     st.markdown(
         """
         Entrez un lien **YouTube** ci‑dessous pour obtenir sa transcription et
-        ses commentaires.  Le traitement utilise l'outil `yt‑dlp` en interne.
-        Veillez donc à ce que celui‑ci soit installé sur votre machine.
+        ses commentaires.  Le traitement utilise le module Python `yt‑dlp` en interne.
         """
     )
 
