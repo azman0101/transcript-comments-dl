@@ -11,7 +11,8 @@
 Ce projet propose une petite application web réalisée avec **Streamlit** pour
 récupérer la transcription (sous‑titres) et les commentaires associés à une
 vidéo YouTube.  L'outil s'appuie sur le module Python
-[`yt-dlp`](https://github.com/yt-dlp/yt-dlp) pour extraire les données.
+[`yt-dlp`](https://github.com/yt-dlp/yt-dlp) pour extraire les données de manière
+intégrée dans l'application.
 
 ## Prérequis
 

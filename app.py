@@ -8,13 +8,16 @@ the ``yt‑dlp`` Python module to download the comments and subtitles for a give
 video URL.  The resulting transcript and comments are displayed directly in
 the browser and can optionally be downloaded as plain text files.
 
+This version includes multiple fallback strategies to handle YouTube's bot
+detection and authentication requirements.
+
 Requirements
 ------------
 
 To run this application you must have the following tools installed on your
 machine:
 
-* **Python 3.8 or newer**
+* **Python 3.8 or newer**
 * **yt‑dlp** – a fork of youtube‑dl capable of downloading comments and
   subtitles.  Installation instructions are available in the official
   repository: https://github.com/yt‑dlp/yt‑dlp
@@ -48,10 +51,10 @@ from yt_dlp import YoutubeDL
 
 
 def fetch_comments(video_url: str, work_dir: Path) -> List[str]:
-    """Download and parse YouTube comments using yt‑dlp.
+    """Download and parse YouTube comments using yt‑dlp with bot detection workarounds.
 
-    yt‑dlp can extract comments directly when configured with appropriate options.
-    We use the extract_info method to get video information including comments.
+    This function implements multiple fallback strategies to handle YouTube's
+    bot detection and authentication requirements.
 
     Parameters
     ----------
@@ -74,42 +77,113 @@ def fetch_comments(video_url: str, work_dir: Path) -> List[str]:
         raise ValueError("Impossible d'extraire l'identifiant de la vidéo.")
     video_id = video_id_match.group(0)
 
-    # Configure yt-dlp options for extracting comments and info
-    ydl_opts = {
-        'skip_download': True,         # Don't download the video file
-        'writecomments': True,         # Extract comments
-        'writeinfojson': True,         # Write info to JSON to capture comments
-        'outtmpl': str(work_dir / f"{video_id}"),  # Output template
-        'quiet': True,                 # Reduce output noise
-        'no_warnings': True,           # Suppress warnings in the logs
-    }
+    # Multiple approaches to try in case of YouTube bot detection
+    approaches = [
+        # Approach 1: Use Chrome browser cookies
+        {
+            'skip_download': True,
+            'writecomments': True,
+            'writeinfojson': True,
+            'outtmpl': str(work_dir / f"{video_id}"),
+            'quiet': True,
+            'no_warnings': True,
+            'cookiesfrombrowser': ('chrome',),
+        },
+        # Approach 2: Use Firefox browser cookies
+        {
+            'skip_download': True,
+            'writecomments': True,
+            'writeinfojson': True,
+            'outtmpl': str(work_dir / f"{video_id}"),
+            'quiet': True,
+            'no_warnings': True,
+            'cookiesfrombrowser': ('firefox',),
+        },
+        # Approach 3: Custom headers to simulate real browser
+        {
+            'skip_download': True,
+            'writecomments': True,
+            'writeinfojson': True,
+            'outtmpl': str(work_dir / f"{video_id}"),
+            'quiet': True,
+            'no_warnings': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+            }
+        },
+        # Approach 4: YouTube extractor arguments
+        {
+            'skip_download': True,
+            'writecomments': True,
+            'writeinfojson': True,
+            'outtmpl': str(work_dir / f"{video_id}"),
+            'quiet': True,
+            'no_warnings': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['tv', 'web', 'ios'],
+                    'skip': ['hls', 'dash'],
+                }
+            }
+        },
+        # Approach 5: Basic configuration (last resort)
+        {
+            'skip_download': True,
+            'writecomments': True,
+            'writeinfojson': True,
+            'outtmpl': str(work_dir / f"{video_id}"),
+            'quiet': True,
+            'no_warnings': True,
+        }
+    ]
 
-    with YoutubeDL(ydl_opts) as ydl:
+    last_error = None
+
+    for approach_num, ydl_opts in enumerate(approaches, 1):
         try:
-            # This will create a .info.json file with comments
-            info_dict = ydl.extract_info(video_url, download=False)
+            with YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(video_url, download=False)
+
+            # Check if we have comments in the info dict directly
+            comments_raw = info_dict.get("comments") or []
+
+            # If no comments in info dict, try to read from the JSON file
+            if not comments_raw:
+                json_path = work_dir / f"{video_id}.info.json"
+                if json_path.exists():
+                    with json_path.open("r", encoding="utf-8") as f:
+                        info = json.load(f)
+                    comments_raw = info.get("comments") or []
+
+            # Extract text from comments
+            comments_text: List[str] = []
+            for comment in comments_raw:
+                # Some entries use the key "text", others use "txt".  We normalise
+                # both.
+                text = comment.get("text") or comment.get("txt") or ""
+                if text:
+                    comments_text.append(text.strip())
+
+            return comments_text
+
         except Exception as e:
-            raise RuntimeError(f"yt-dlp failed to extract video info: {str(e)}")
+            last_error = e
+            error_msg = str(e)
 
-    # Check if we have comments in the info dict directly
-    comments_raw = info_dict.get("comments") or []
-    
-    # If no comments in info dict, try to read from the JSON file
-    if not comments_raw:
-        json_path = work_dir / f"{video_id}.info.json"
-        if json_path.exists():
-            with json_path.open("r", encoding="utf-8") as f:
-                info = json.load(f)
-            comments_raw = info.get("comments") or []
-    comments_text: List[str] = []
-    for comment in comments_raw:
-        # Some entries use the key "text", others use "txt".  We normalise
-        # both.
-        text = comment.get("text") or comment.get("txt") or ""
-        if text:
-            comments_text.append(text.strip())
+            # If it's not the bot detection error, re-raise immediately
+            if "Sign in to confirm" not in error_msg and "bot" not in error_msg.lower():
+                raise RuntimeError(f"yt-dlp failed to extract video info: {str(e)}")
 
-    return comments_text
+            # Otherwise, continue to next approach
+            continue
+
+    # If all approaches failed, raise the last error with context
+    raise RuntimeError(f"Failed to extract comments after trying {len(approaches)} approaches. "
+                      f"YouTube may be blocking access. Last error: {last_error}")
 
 
 def parse_srt_contents(contents: str) -> str:
@@ -145,13 +219,10 @@ def parse_srt_contents(contents: str) -> str:
 
 
 def fetch_transcript(video_url: str, work_dir: Path, language: str = "fr") -> Tuple[str, str]:
-    """Download and parse YouTube subtitles using yt‑dlp.
+    """Download and parse YouTube subtitles using yt‑dlp with bot detection workarounds.
 
-    yt‑dlp will attempt to download manually provided subtitles first and fall
-    back to automatically generated subtitles when ``--write-auto-subs`` is
-    specified.  We request subtitles in the desired language and fall back to
-    English if none are available.  The resulting transcript is returned as a
-    string.
+    This function implements multiple fallback strategies to handle YouTube's
+    bot detection and authentication requirements when fetching subtitles.
 
     Parameters
     ----------
@@ -178,52 +249,128 @@ def fetch_transcript(video_url: str, work_dir: Path, language: str = "fr") -> Tu
 
     base_output = work_dir / f"{video_id}"
 
-    # Configure yt-dlp options for extracting subtitles
-    ydl_opts = {
-        'skip_download': True,         # Don't download the video file
-        'writesubtitles': True,        # Download manual subtitles
-        'writeautomaticsub': True,     # Download auto-generated subtitles as fallback
-        'subtitlesformat': 'srt',      # Request SRT format
-        'subtitleslangs': [language],  # Request specific language
-        'outtmpl': str(base_output),   # Output template
-        'quiet': True,                 # Reduce output noise
-        'no_warnings': True,           # Suppress warnings in the logs
-    }
+    # Multiple approaches to try in case of YouTube bot detection
+    approaches = [
+        # Approach 1: Use Chrome browser cookies
+        {
+            'skip_download': True,
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitlesformat': 'srt',
+            'subtitleslangs': [language],
+            'outtmpl': str(base_output),
+            'quiet': True,
+            'no_warnings': True,
+            'cookiesfrombrowser': ('chrome',),
+        },
+        # Approach 2: Use Firefox browser cookies
+        {
+            'skip_download': True,
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitlesformat': 'srt',
+            'subtitleslangs': [language],
+            'outtmpl': str(base_output),
+            'quiet': True,
+            'no_warnings': True,
+            'cookiesfrombrowser': ('firefox',),
+        },
+        # Approach 3: Custom headers to simulate real browser
+        {
+            'skip_download': True,
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitlesformat': 'srt',
+            'subtitleslangs': [language],
+            'outtmpl': str(base_output),
+            'quiet': True,
+            'no_warnings': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+            }
+        },
+        # Approach 4: YouTube extractor arguments
+        {
+            'skip_download': True,
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitlesformat': 'srt',
+            'subtitleslangs': [language],
+            'outtmpl': str(base_output),
+            'quiet': True,
+            'no_warnings': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['tv', 'web', 'ios'],
+                    'skip': ['hls', 'dash'],
+                }
+            }
+        },
+        # Approach 5: Basic configuration (last resort)
+        {
+            'skip_download': True,
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitlesformat': 'srt',
+            'subtitleslangs': [language],
+            'outtmpl': str(base_output),
+            'quiet': True,
+            'no_warnings': True,
+        }
+    ]
 
-    with YoutubeDL(ydl_opts) as ydl:
+    last_error = None
+
+    for approach_num, ydl_opts in enumerate(approaches, 1):
         try:
-            # This will download subtitle files to the work directory
-            info_dict = ydl.extract_info(video_url, download=False)
+            with YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(video_url, download=False)
+
+            # Look for files like <video_id>.<lang>.srt
+            possible_files = list(work_dir.glob(f"{video_id}.*.srt"))
+            selected_lang = ""
+            subtitle_path: Optional[Path] = None
+
+            for file in possible_files:
+                suffix_parts = file.name.split(".")
+                if len(suffix_parts) >= 3:
+                    lang_code = suffix_parts[-2]  # filename format: <id>.<lang>.srt
+                    if lang_code == language:
+                        subtitle_path = file
+                        selected_lang = lang_code
+                        break
+
+            # If not found, fall back to the first available language
+            if subtitle_path is None and possible_files:
+                subtitle_path = possible_files[0]
+                parts = subtitle_path.name.split(".")
+                selected_lang = parts[-2] if len(parts) >= 3 else language
+
+            transcript = ""
+            if subtitle_path and subtitle_path.exists():
+                with subtitle_path.open("r", encoding="utf-8") as f:
+                    contents = f.read()
+                transcript = parse_srt_contents(contents)
+
+            return selected_lang, transcript
+
         except Exception as e:
-            raise RuntimeError(f"yt-dlp failed to extract video info: {str(e)}")
+            last_error = e
+            error_msg = str(e)
 
-    # Look for files like <video_id>.<lang>.srt
-    possible_files = list(work_dir.glob(f"{video_id}.*.srt"))
-    selected_lang = ""
-    subtitle_path: Optional[Path] = None
-    
-    for file in possible_files:
-        suffix_parts = file.name.split(".")
-        if len(suffix_parts) >= 3:
-            lang_code = suffix_parts[-2]  # filename format: <id>.<lang>.srt
-            if lang_code == language:
-                subtitle_path = file
-                selected_lang = lang_code
-                break
-    
-    # If not found, fall back to the first available language
-    if subtitle_path is None and possible_files:
-        subtitle_path = possible_files[0]
-        parts = subtitle_path.name.split(".")
-        selected_lang = parts[-2] if len(parts) >= 3 else language
+            # If it's not the bot detection error, re-raise immediately
+            if "Sign in to confirm" not in error_msg and "bot" not in error_msg.lower():
+                raise RuntimeError(f"yt-dlp failed to extract video info: {str(e)}")
 
-    transcript = ""
-    if subtitle_path and subtitle_path.exists():
-        with subtitle_path.open("r", encoding="utf-8") as f:
-            contents = f.read()
-        transcript = parse_srt_contents(contents)
+            # Otherwise, continue to next approach
+            continue
 
-    return selected_lang, transcript
+    # If all approaches failed, return empty result with warning
+    return language, ""
 
 
 def main() -> None:
@@ -237,6 +384,15 @@ def main() -> None:
         """
         Entrez un lien **YouTube** ci‑dessous pour obtenir sa transcription et
         ses commentaires.  Le traitement utilise le module Python `yt‑dlp` en interne.
+
+        ⚠️ **Note importante :** YouTube a récemment renforcé ses protections anti-bot.
+        Si vous rencontrez des erreurs, voici les solutions :
+
+        1. **Connectez-vous à YouTube dans votre navigateur** (Chrome ou Firefox)
+        2. **Essayez avec des vidéos moins populaires**
+        3. **Attendez quelques minutes entre les tentatives**
+
+        L'application essaiera automatiquement plusieurs méthodes pour contourner ces restrictions.
         """
     )
 
@@ -305,7 +461,48 @@ def main() -> None:
                 else:
                     st.warning("Aucun commentaire n'a pu être récupéré pour cette vidéo.")
         except Exception as exc:
-            st.error(f"Une erreur est survenue : {exc}")
+            error_msg = str(exc)
+            if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+                st.error("❌ YouTube a détecté une activité automatisée")
+                st.markdown("""
+                **Solutions recommandées :**
+
+                1. **Connectez-vous à YouTube** dans votre navigateur (Chrome ou Firefox)
+                2. **Réessayez dans quelques minutes**
+                3. **Utilisez une vidéo différente** (moins populaire)
+                4. **Vérifiez votre connexion internet**
+
+                Cette erreur est temporaire et liée aux protections anti-bot de YouTube.
+                """)
+            elif "Failed to extract comments after trying" in error_msg:
+                st.error("❌ Impossible de récupérer les données après plusieurs tentatives")
+                st.markdown("""
+                **Que s'est-il passé ?**
+
+                L'application a essayé plusieurs méthodes pour contourner les protections YouTube,
+                mais toutes ont échoué. Ceci peut arriver avec des vidéos très populaires ou
+                lorsque YouTube renforce temporairement ses restrictions.
+
+                **Solutions :**
+
+                1. Réessayez avec une autre vidéo
+                2. Attendez 10-15 minutes avant de réessayer
+                3. Vérifiez que l'URL est correcte et que la vidéo est publique
+                """)
+            else:
+                st.error(f"Une erreur est survenue : {exc}")
+                st.markdown("""
+                **Aide au débogage :**
+
+                Si cette erreur persiste, vérifiez :
+                - L'URL YouTube est correcte
+                - La vidéo est publique (pas privée ou supprimée)
+                - Votre connexion internet fonctionne
+                """)
+
+            # Afficher les détails techniques en cas de besoin
+            with st.expander("Détails techniques de l'erreur"):
+                st.code(str(exc))
 
 
 if __name__ == "__main__":
