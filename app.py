@@ -168,21 +168,24 @@ def fetch_transcript(video_url: str, work_dir: Path, language: str = "fr") -> Tu
     video_id = video_id_match.group(0)
 
     base_output = work_dir / f"{video_id}"
-    # Try to fetch subtitles in the specified language
-    cmd = [
-        "yt-dlp",
-        "--skip-download",
-        "--write-sub",
-        "--write-auto-subs",
-        "--sub-format",
-        "srt",
-        "--sub-lang",
-        language,
-        "-o",
-        str(base_output),
-        video_url,
-    ]
-    run_yt_dlp(cmd)
+
+    # Configure yt-dlp options for extracting subtitles
+    ydl_opts = {
+        'skip_download': True,         # Don't download the video file
+        'writesubtitles': True,        # Download manual subtitles
+        'writeautomaticsub': True,     # Download auto-generated subtitles as fallback
+        'subtitlesformat': 'srt',      # Request SRT format
+        'subtitleslangs': [language],  # Request specific language
+        'outtmpl': str(base_output),   # Output template
+        'quiet': True,                 # Reduce output noise
+        'no_warnings': True,           # Suppress warnings in the logs
+    }
+
+    with YoutubeDL(ydl_opts) as ydl:
+        try:
+            info_dict = ydl.extract_info(video_url, download=False)
+        except Exception as e:
+            raise RuntimeError(f"yt-dlp failed to extract video info: {str(e)}")
 
     # Look for files like <video_id>.<lang>.srt
     possible_files = list(work_dir.glob(f"{video_id}.*.srt"))
