@@ -1,9 +1,18 @@
-# Transcripteur et commentaires YouTube avec Streamlit
+# Transcr1. **Python 3.8 ou supérieur** doit être installé sur votre machine.
+2. Les dépendances Python nécessaires sont listées dans
+   `requirements.txt`.  Installez‑les avec :
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+   Cela installera notamment `streamlit`, `yt-dlp` et `pysrt` pour le parsing des sous‑titres.mmentaires YouTube avec Streamlit
 
 Ce projet propose une petite application web réalisée avec **Streamlit** pour
 récupérer la transcription (sous‑titres) et les commentaires associés à une
-vidéo YouTube.  L'outil s'appuie sur le programme ligne de commande
-[`yt-dlp`](https://github.com/yt-dlp/yt-dlp) pour extraire les données.
+vidéo YouTube.  L'outil s'appuie sur le module Python
+[`yt-dlp`](https://github.com/yt-dlp/yt-dlp) pour extraire les données de manière
+intégrée dans l'application.
 
 ## Prérequis
 
