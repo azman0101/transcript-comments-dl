@@ -1,13 +1,22 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    ":semanticCommitTypeAll(chore)",
+    ":automergeRequireAllStatusChecks"
   ],
   "packageRules": [
     {
+      "comment": "Automatically group and merge minor and patch updates",
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "groupName": "all non-major dependencies",
-      "groupSlug": "all-non-major"
+      "groupSlug": "all-non-major",
+      "automerge": true
+    },
+    {
+      "comment": "Disable automerge for major updates so they are manually reviewed",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
     }
   ],
   "timezone": "Europe/Paris",
