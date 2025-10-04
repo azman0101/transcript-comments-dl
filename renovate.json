@@ -14,7 +14,7 @@
       "automerge": true
     },
     {
-      "comment": "Désactiver la fusion automatique pour les mises à jour majeures afin qu'elles soient examinées manuellement",
+      "comment": "Disable automerge for major updates so they are manually reviewed",
       "matchUpdateTypes": ["major"],
       "automerge": false
     }
