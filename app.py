@@ -291,18 +291,20 @@ def main() -> None:
             with tempfile.TemporaryDirectory() as tmpdir_str:
                 tmpdir = Path(tmpdir_str)
 
-                comments = []
                 if download_comments:
                     with st.spinner("Téléchargement des commentaires..."):
                         comments = fetch_comments(url, tmpdir)
+                else:
+                    comments = []
 
-                transcript = ""
-                actual_lang = ""
                 if download_transcript:
                     with st.spinner("Téléchargement de la transcription..."):
                         actual_lang, transcript = fetch_transcript(
                             url, tmpdir, lang
                         )
+                else:
+                    transcript = ""
+                    actual_lang = ""
 
                 st.success("Récupération terminée !")
 
