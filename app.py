@@ -266,60 +266,88 @@ def main() -> None:
             index=0,
             help="Choisissez la langue à privilégier pour les sous‑titres."
         )
+        download_transcript = st.checkbox(
+            "Télécharger la transcription",
+            value=True,
+            help="Inclure la transcription dans le résultat."
+        )
+        download_comments = st.checkbox(
+            "Télécharger les commentaires",
+            value=True,
+            help="Inclure les commentaires dans le résultat."
+        )
         submitted = st.form_submit_button("Récupérer")
 
     if submitted:
         if not url:
             st.error("Merci de fournir une URL valide.")
             return
+        if not download_transcript and not download_comments:
+            st.error(
+                "Veuillez sélectionner au moins une option de téléchargement."
+            )
+            return
         try:
             with tempfile.TemporaryDirectory() as tmpdir_str:
                 tmpdir = Path(tmpdir_str)
-                with st.spinner("Téléchargement des commentaires..."):
-                    comments = fetch_comments(url, tmpdir)
-                with st.spinner("Téléchargement de la transcription..."):
-                    actual_lang, transcript = fetch_transcript(url, tmpdir, lang)
+
+                if download_comments:
+                    with st.spinner("Téléchargement des commentaires..."):
+                        comments = fetch_comments(url, tmpdir)
+                else:
+                    comments = []
+
+                if download_transcript:
+                    with st.spinner("Téléchargement de la transcription..."):
+                        actual_lang, transcript = fetch_transcript(
+                            url, tmpdir, lang
+                        )
+                else:
+                    transcript = ""
+                    actual_lang = ""
 
                 st.success("Récupération terminée !")
 
                 # Display transcript
-                if transcript:
-                    st.subheader(f"Transcription ({actual_lang})")
-                    st.text_area(
-                        "Texte du transcript",
-                        value=transcript,
-                        height=300,
-                    )
-                    st.download_button(
-                        label="Télécharger la transcription",
-                        data=transcript,
-                        file_name=f"{actual_lang}_transcript.txt",
-                        mime="text/plain",
-                    )
-                else:
-                    st.warning("Aucune transcription n'a été trouvée pour cette vidéo.")
+                if download_transcript:
+                    if transcript:
+                        st.subheader(f"Transcription ({actual_lang})")
+                        st.text_area(
+                            "Texte du transcript",
+                            value=transcript,
+                            height=300,
+                        )
+                        st.download_button(
+                            label="Télécharger la transcription",
+                            data=transcript,
+                            file_name=f"{actual_lang}_transcript.txt",
+                            mime="text/plain",
+                        )
+                    else:
+                        st.warning("Aucune transcription n'a été trouvée pour cette vidéo.")
 
                 # Display comments
-                if comments:
-                    st.subheader(f"Commentaires ({len(comments)})")
-                    # Show a sample of the first 100 comments to avoid overloading
-                    max_display = 100
-                    for idx, comment in enumerate(comments[:max_display], start=1):
-                        st.markdown(f"**Commentaire {idx} :** {comment}")
-                    if len(comments) > max_display:
-                        st.info(
-                            f"{len(comments) - max_display} autres commentaires non affichés."
+                if download_comments:
+                    if comments:
+                        st.subheader(f"Commentaires ({len(comments)})")
+                        # Show a sample of the first 100 comments to avoid overloading
+                        max_display = 100
+                        for idx, comment in enumerate(comments[:max_display], start=1):
+                            st.markdown(f"**Commentaire {idx} :** {comment}")
+                        if len(comments) > max_display:
+                            st.info(
+                                f"{len(comments) - max_display} autres commentaires non affichés."
+                            )
+                        # Prepare comments for download
+                        comments_text = "\n".join(comments)
+                        st.download_button(
+                            label="Télécharger les commentaires",
+                            data=comments_text,
+                            file_name="comments.txt",
+                            mime="text/plain",
                         )
-                    # Prepare comments for download
-                    comments_text = "\n".join(comments)
-                    st.download_button(
-                        label="Télécharger les commentaires",
-                        data=comments_text,
-                        file_name="comments.txt",
-                        mime="text/plain",
-                    )
-                else:
-                    st.warning("Aucun commentaire n'a pu être récupéré pour cette vidéo.")
+                    else:
+                        st.warning("Aucun commentaire n'a pu être récupéré pour cette vidéo.")
         except Exception as exc:
             st.error(f"Une erreur est survenue : {exc}")
 
