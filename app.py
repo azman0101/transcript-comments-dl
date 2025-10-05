@@ -19,9 +19,6 @@ machine:
   subtitles.  Installation instructions are available in the official
   repository: https://github.com/yt‑dlp/yt‑dlp
 * **Streamlit** – used for the web interface.
-* **pysrt** (optional) – for parsing `.srt` subtitle files.  This module is
-  listed in the ``requirements.txt`` file and can be installed along with
-  Streamlit.
 
 Once all dependencies are installed you can launch the app with:
 
