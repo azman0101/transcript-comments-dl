@@ -312,16 +312,16 @@ def main() -> None:
                 if download_transcript:
                     if transcript:
                         st.subheader(f"Transcription ({actual_lang})")
-                        st.text_area(
-                            "Texte du transcript",
-                            value=transcript,
-                            height=300,
-                        )
                         st.download_button(
                             label="Télécharger la transcription",
                             data=transcript,
                             file_name=f"{actual_lang}_transcript.txt",
                             mime="text/plain",
+                        )
+                        st.text_area(
+                            "Texte du transcript",
+                            value=transcript,
+                            height=300,
                         )
                     else:
                         st.warning("Aucune transcription n'a été trouvée pour cette vidéo.")
@@ -330,14 +330,6 @@ def main() -> None:
                 if download_comments:
                     if comments:
                         st.subheader(f"Commentaires ({len(comments)})")
-                        # Show a sample of the first 100 comments to avoid overloading
-                        max_display = 100
-                        for idx, comment in enumerate(comments[:max_display], start=1):
-                            st.markdown(f"**Commentaire {idx} :** {comment}")
-                        if len(comments) > max_display:
-                            st.info(
-                                f"{len(comments) - max_display} autres commentaires non affichés."
-                            )
                         # Prepare comments for download
                         comments_text = "\n".join(comments)
                         st.download_button(
@@ -346,6 +338,14 @@ def main() -> None:
                             file_name="comments.txt",
                             mime="text/plain",
                         )
+                        # Show a sample of the first 100 comments to avoid overloading
+                        max_display = 100
+                        for idx, comment in enumerate(comments[:max_display], start=1):
+                            st.markdown(f"**Commentaire {idx} :** {comment}")
+                        if len(comments) > max_display:
+                            st.info(
+                                f"{len(comments) - max_display} autres commentaires non affichés."
+                            )
                     else:
                         st.warning("Aucun commentaire n'a pu être récupéré pour cette vidéo.")
         except Exception as exc:
