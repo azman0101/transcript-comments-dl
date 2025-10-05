@@ -96,9 +96,6 @@ def generate_notification_sound() -> bytes:
     # Apply envelope to audio
     audio_data = audio_data * envelope
     
-    # Add a tiny timestamp-based variation in metadata only (not in audio)
-    # This prevents caching without affecting sound quality
-    
     # Scale to 16-bit integer range with slight reduction to avoid clipping
     audio_data = (audio_data * 30000).astype(np.int16)
     
