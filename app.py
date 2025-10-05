@@ -53,6 +53,9 @@ import streamlit as st
 def generate_notification_sound() -> bytes:
     """Generate a simple notification beep sound.
     
+    Each call generates a slightly unique sound to prevent browser caching
+    and ensure autoplay works on multiple submissions.
+    
     Returns
     -------
     bytes
@@ -70,6 +73,10 @@ def generate_notification_sound() -> bytes:
     fade_samples = int(0.01 * sample_rate)
     audio_data[:fade_samples] *= np.linspace(0, 1, fade_samples)
     audio_data[-fade_samples:] *= np.linspace(1, 0, fade_samples)
+    
+    # Add minimal imperceptible random variation to prevent caching
+    # This ensures each generated sound is unique
+    audio_data += np.random.uniform(-0.0001, 0.0001, len(audio_data))
     
     # Scale to 16-bit integer range
     audio_data = (audio_data * 32767).astype(np.int16)
