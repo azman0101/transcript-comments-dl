@@ -36,15 +36,53 @@ Please note that fetching comments for popular videos can take a few minutes
 depending on the number of comments available.
 """
 
+import io
 import json
 import os
 import re
 import subprocess
 import tempfile
+import wave
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+import numpy as np
 import streamlit as st
+
+
+def generate_notification_sound() -> bytes:
+    """Generate a simple notification beep sound.
+    
+    Returns
+    -------
+    bytes
+        WAV audio data for a short notification beep.
+    """
+    sample_rate = 44100  # Hz
+    duration = 0.3  # seconds
+    frequency = 800  # Hz (notification tone)
+    
+    # Generate sine wave
+    t = np.linspace(0, duration, int(sample_rate * duration))
+    audio_data = np.sin(2 * np.pi * frequency * t)
+    
+    # Apply fade in/out to avoid clicks
+    fade_samples = int(0.01 * sample_rate)
+    audio_data[:fade_samples] *= np.linspace(0, 1, fade_samples)
+    audio_data[-fade_samples:] *= np.linspace(1, 0, fade_samples)
+    
+    # Scale to 16-bit integer range
+    audio_data = (audio_data * 32767).astype(np.int16)
+    
+    # Create WAV file in memory
+    byte_io = io.BytesIO()
+    with wave.open(byte_io, 'wb') as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(audio_data.tobytes())
+    
+    return byte_io.getvalue()
 
 
 def run_yt_dlp(args: List[str]) -> None:
@@ -307,6 +345,10 @@ def main() -> None:
                     actual_lang = ""
 
                 st.success("Récupération terminée !")
+                
+                # Play notification sound
+                notification_sound = generate_notification_sound()
+                st.audio(notification_sound, format="audio/wav", autoplay=True)
 
                 # Display transcript
                 if download_transcript:
