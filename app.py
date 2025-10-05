@@ -19,6 +19,7 @@ machine:
   subtitles.  Installation instructions are available in the official
   repository: https://github.com/yt‑dlp/yt‑dlp
 * **Streamlit** – used for the web interface.
+* **NumPy** – required for audio processing and signal generation. Install via `pip install numpy`.
 
 Once all dependencies are installed you can launch the app with:
 
