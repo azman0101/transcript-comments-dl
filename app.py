@@ -19,9 +19,7 @@ machine:
   subtitles.  Installation instructions are available in the official
   repository: https://github.com/yt‑dlp/yt‑dlp
 * **Streamlit** – used for the web interface.
-* **pysrt** (optional) – for parsing `.srt` subtitle files.  This module is
-  listed in the ``requirements.txt`` file and can be installed along with
-  Streamlit.
+* **NumPy** – required for audio processing and signal generation. Install via `pip install numpy`.
 
 Once all dependencies are installed you can launch the app with:
 
@@ -36,15 +34,80 @@ Please note that fetching comments for popular videos can take a few minutes
 depending on the number of comments available.
 """
 
+import base64
+import io
 import json
 import os
 import re
 import subprocess
 import tempfile
+import wave
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+import numpy as np
 import streamlit as st
+
+
+def generate_notification_sound() -> bytes:
+    """Generate a clean notification beep sound using a simple tone.
+    
+    Creates a pleasant notification sound with proper ADSR envelope
+    to avoid clicks and artifacts.
+    
+    Returns
+    -------
+    bytes
+        WAV audio data for a short notification beep.
+    """
+    sample_rate = 44100  # Hz
+    duration = 0.4  # seconds - slightly longer for smoother sound
+    frequency = 800  # Hz (notification tone)
+    
+    # Generate time array
+    t = np.linspace(0, duration, int(sample_rate * duration))
+    
+    # Generate pure sine wave
+    audio_data = np.sin(2 * np.pi * frequency * t)
+    
+    # Create ADSR envelope for clean, professional sound
+    # Attack: 0.02s, Decay: 0.05s, Sustain: 0.20s, Release: 0.13s
+    attack_samples = int(0.02 * sample_rate)
+    decay_samples = int(0.05 * sample_rate)
+    sustain_samples = int(0.20 * sample_rate)
+    release_samples = len(audio_data) - attack_samples - decay_samples - sustain_samples
+    
+    envelope = np.ones(len(audio_data))
+    
+    # Attack: linear ramp up
+    envelope[:attack_samples] = np.linspace(0, 1, attack_samples)
+    
+    # Decay: exponential decay to sustain level (0.7)
+    decay_curve = np.exp(np.linspace(0, -1.5, decay_samples))
+    envelope[attack_samples:attack_samples + decay_samples] = 1 - (1 - 0.7) * (1 - decay_curve)
+    
+    # Sustain: constant level
+    envelope[attack_samples + decay_samples:attack_samples + decay_samples + sustain_samples] = 0.7
+    
+    # Release: smooth exponential fade out
+    release_curve = np.exp(np.linspace(0, -5, release_samples))
+    envelope[-release_samples:] = 0.7 * release_curve
+    
+    # Apply envelope to audio
+    audio_data = audio_data * envelope
+    
+    # Scale to 16-bit integer range with slight reduction to avoid clipping
+    audio_data = (audio_data * 30000).astype(np.int16)
+    
+    # Create WAV file in memory
+    byte_io = io.BytesIO()
+    with wave.open(byte_io, 'wb') as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(audio_data.tobytes())
+    
+    return byte_io.getvalue()
 
 
 def run_yt_dlp(args: List[str]) -> None:
@@ -307,6 +370,17 @@ def main() -> None:
                     actual_lang = ""
 
                 st.success("Récupération terminée !")
+                
+                # Play notification sound using HTML audio with autoplay
+                # This ensures the sound plays on every submission
+                notification_sound = generate_notification_sound()
+                audio_base64 = base64.b64encode(notification_sound).decode()
+                audio_html = f"""
+                    <audio autoplay>
+                        <source src="data:audio/wav;base64,{audio_base64}" type="audio/wav">
+                    </audio>
+                """
+                st.markdown(audio_html, unsafe_allow_html=True)
 
                 # Display transcript
                 if download_transcript:
