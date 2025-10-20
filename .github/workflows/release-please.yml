@@ -14,7 +14,17 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - uses: google-github-actions/release-please-action@v4
+      - uses: googleapis/release-please-action@v4
+        id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           release-type: simple
+      - name: Create version file
+        if: ${{ steps.release.outputs.release_created }}
+        run: echo "${{ steps.release.outputs.tag_name }}" > version.txt
+      - name: Commit version file
+        if: ${{ steps.release.outputs.release_created }}
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update version to ${{ steps.release.outputs.tag_name }}"
+          file_pattern: version.txt
