@@ -43,7 +43,7 @@ import subprocess
 import tempfile
 import wave
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import streamlit as st
@@ -134,7 +134,7 @@ def run_yt_dlp(args: List[str]) -> None:
         )
 
 
-def fetch_comments(video_url: str, work_dir: Path) -> List[str]:
+def fetch_comments(video_url: str, work_dir: Path) -> List[Dict[str, str]]:
     """Download and parse YouTube comments using yt‑dlp.
 
     yt‑dlp can write comments into the JSON metadata file when invoked with
@@ -151,9 +151,9 @@ def fetch_comments(video_url: str, work_dir: Path) -> List[str]:
 
     Returns
     -------
-    List[str]
-        A list of comment strings.  Only the textual content of each comment
-        is returned.
+    List[Dict[str, str]]
+        A list of dictionaries, where each dictionary contains the 'author'
+        and 'text' of a comment.
     """
     # Derive a simple filename stem from the video URL by extracting the video
     # identifier.  This keeps file names short and avoids issues with special
@@ -185,15 +185,14 @@ def fetch_comments(video_url: str, work_dir: Path) -> List[str]:
         info = json.load(f)
 
     comments_raw = info.get("comments") or []
-    comments_text: List[str] = []
+    comments_list: List[Dict[str, str]] = []
     for comment in comments_raw:
-        # Some entries use the key "text", others use "txt".  We normalise
-        # both.
         text = comment.get("text") or comment.get("txt") or ""
+        author = comment.get("author") or "Unknown"
         if text:
-            comments_text.append(text.strip())
+            comments_list.append({"author": author.strip(), "text": text.strip()})
 
-    return comments_text
+    return comments_list
 
 
 def parse_srt_contents(contents: str) -> str:
@@ -405,7 +404,12 @@ def main() -> None:
                     if comments:
                         st.subheader(f"Commentaires ({len(comments)})")
                         # Prepare comments for download
-                        comments_text = "\n".join(comments)
+                        comments_text = "\n\n".join(
+                            [
+                                f"Auteur : {c['author']}\n{c['text']}"
+                                for c in comments
+                            ]
+                        )
                         st.download_button(
                             label="Télécharger les commentaires",
                             data=comments_text,
@@ -415,7 +419,10 @@ def main() -> None:
                         # Show a sample of the first 100 comments to avoid overloading
                         max_display = 100
                         for idx, comment in enumerate(comments[:max_display], start=1):
-                            st.markdown(f"**Commentaire {idx} :** {comment}")
+                            st.markdown(
+                                f"**Commentaire {idx} (de {comment['author']}) :**\n"
+                                f"> {comment['text']}"
+                            )
                         if len(comments) > max_display:
                             st.info(
                                 f"{len(comments) - max_display} autres commentaires non affichés."
