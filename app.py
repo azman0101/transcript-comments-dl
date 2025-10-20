@@ -432,6 +432,14 @@ def main() -> None:
         except Exception as exc:
             st.error(f"Une erreur est survenue : {exc}")
 
+    # Display footer with version
+    try:
+        with open("version.txt", "r") as f:
+            version = f.read().strip()
+    except FileNotFoundError:
+        version = "development"
+    st.markdown(f"<div style='text-align: center; color: grey;'>Version: {version}</div>", unsafe_allow_html=True)
+
 
 if __name__ == "__main__":
     main()
