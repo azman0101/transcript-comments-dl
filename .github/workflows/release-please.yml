@@ -18,7 +18,8 @@ jobs:
         id: release
         with:
           token: ${{ secrets.MY_RELEASE_PLEASE_TOKEN }}
-          release-type: simple
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
       - name: Create version file
         if: ${{ steps.release.outputs.release_created }}
         run: echo "${{ steps.release.outputs.tag_name }}" > version.txt
