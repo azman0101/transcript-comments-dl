@@ -17,15 +17,6 @@ jobs:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
-          token: ${{ secrets.MY_RELEASE_PLEASE_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-      - name: Create version file
-        if: ${{ steps.release.outputs.release_created }}
-        run: echo "${{ steps.release.outputs.tag_name }}" > version.txt
-      - name: Commit version file
-        if: ${{ steps.release.outputs.release_created }}
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore: update version to ${{ steps.release.outputs.tag_name }}"
-          file_pattern: version.txt
