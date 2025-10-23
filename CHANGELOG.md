@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/azman0101/transcript-comments-dl/compare/v1.0.0...v1.1.0) (2025-10-23)
+
+
+### Features
+
+* Implement batch processing for YouTube videos ([588fb38](https://github.com/azman0101/transcript-comments-dl/commit/588fb38a5371627b6acf9f27ac529bbc965e763e))
+* Implement batch processing for YouTube videos ([e29872e](https://github.com/azman0101/transcript-comments-dl/commit/e29872e8fc4326ee6baa30b47a2eb44130b42ec6))
+
 ## 1.0.0 (2025-10-22)
 
 
