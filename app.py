@@ -42,11 +42,23 @@ import re
 import subprocess
 import tempfile
 import wave
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import streamlit as st
+
+
+@dataclass
+class VideoData:
+    """A container for storing metadata about a single video."""
+
+    url: str
+    title: str
+    transcript: str
+    comments: List[Dict[str, str]]
+    actual_lang: str = ""
 
 
 def generate_notification_sound() -> bytes:
@@ -134,67 +146,6 @@ def run_yt_dlp(args: List[str]) -> None:
         )
 
 
-def fetch_comments(video_url: str, work_dir: Path) -> List[Dict[str, str]]:
-    """Download and parse YouTube comments using yt‑dlp.
-
-    yt‑dlp can write comments into the JSON metadata file when invoked with
-    ``--write-comments``.  We specify a custom output template so that the
-    resulting ``.info.json`` file has a predictable name based on the video ID.
-
-    Parameters
-    ----------
-    video_url:
-        The full YouTube URL provided by the user.
-    work_dir:
-        A directory in which to store temporary files.  The JSON file will be
-        created here.
-
-    Returns
-    -------
-    List[Dict[str, str]]
-        A list of dictionaries, where each dictionary contains the 'author'
-        and 'text' of a comment.
-    """
-    # Derive a simple filename stem from the video URL by extracting the video
-    # identifier.  This keeps file names short and avoids issues with special
-    # characters in titles.
-    video_id_match = re.search(r"(?<=v=)[^&?]+|(?<=youtu.be/)[^?&]+", video_url)
-    if not video_id_match:
-        raise ValueError("Impossible d'extraire l'identifiant de la vidéo.")
-    video_id = video_id_match.group(0)
-    json_path = work_dir / f"{video_id}.info.json"
-
-    # Construct yt‑dlp command.  We always skip downloading the media.
-    cmd = [
-        "yt-dlp",
-        "--skip-download",
-        "--write-info-json",
-        "--write-comments",
-        "-o",
-        str(work_dir / f"{video_id}"),
-        video_url,
-    ]
-    run_yt_dlp(cmd)
-
-    if not json_path.exists():
-        raise FileNotFoundError(
-            f"Fichier JSON introuvable : {json_path}. Assurez-vous que yt‑dlp est correctement installé."
-        )
-
-    with json_path.open("r", encoding="utf-8") as f:
-        info = json.load(f)
-
-    comments_raw = info.get("comments") or []
-    comments_list: List[Dict[str, str]] = []
-    for comment in comments_raw:
-        text = comment.get("text") or comment.get("txt") or ""
-        author = comment.get("author") or "Unknown"
-        if text:
-            comments_list.append({"author": author.strip(), "text": text.strip()})
-
-    return comments_list
-
-
 def parse_srt_contents(contents: str) -> str:
     """Convert an SRT subtitle file into plain text.
 
@@ -227,80 +178,107 @@ def parse_srt_contents(contents: str) -> str:
     return "\n".join(transcript_lines)
 
 
-def fetch_transcript(video_url: str, work_dir: Path, language: str = "fr") -> Tuple[str, str]:
-    """Download and parse YouTube subtitles using yt‑dlp.
+def fetch_video_data(
+    video_url: str,
+    work_dir: Path,
+    language: str,
+    download_transcript: bool,
+    download_comments: bool,
+) -> VideoData:
+    """Download all necessary video data using a single yt‑dlp invocation.
 
-    yt‑dlp will attempt to download manually provided subtitles first and fall
-    back to automatically generated subtitles when ``--write-auto-subs`` is
-    specified.  We request subtitles in the desired language and fall back to
-    English if none are available.  The resulting transcript is returned as a
-    string.
+    This function fetches the video title, transcript, and comments in a
+    single call to ``yt‑dlp`` to improve efficiency by avoiding multiple
+    invocations.
 
     Parameters
     ----------
     video_url:
-        The YouTube URL.
+        The full YouTube URL provided by the user.
     work_dir:
-        Temporary directory used to store the downloaded subtitle file.
+        A temporary directory to store downloaded files.
     language:
-        Two‑letter language code (e.g. "fr" for French or "en" for English).
+        The preferred language for the transcript.
+    download_transcript:
+        A boolean indicating whether to download the transcript.
+    download_comments:
+        A boolean indicating whether to download the comments.
 
     Returns
     -------
-    Tuple[str, str]
-        A pair ``(lang_code, transcript)`` where ``lang_code`` is the
-        language of the transcript that was actually used and ``transcript``
-        contains the plain text extracted from the subtitles.  If neither
-        manual nor auto subtitles are available the transcript string will
-        be empty.
+    VideoData
+        A dataclass containing the title, transcript, and comments.
     """
     video_id_match = re.search(r"(?<=v=)[^&?]+|(?<=youtu.be/)[^?&]+", video_url)
     if not video_id_match:
         raise ValueError("Impossible d'extraire l'identifiant de la vidéo.")
     video_id = video_id_match.group(0)
+    json_path = work_dir / f"{video_id}.info.json"
 
-    base_output = work_dir / f"{video_id}"
-    # Try to fetch subtitles in the specified language
-    cmd = [
-        "yt-dlp",
-        "--skip-download",
-        "--write-sub",
-        "--write-auto-subs",
-        "--sub-format",
-        "srt",
-        "--sub-lang",
-        language,
-        "-o",
-        str(base_output),
-        video_url,
-    ]
+    cmd = ["yt-dlp", "--skip-download", "-o", str(work_dir / f"{video_id}")]
+    if download_transcript:
+        cmd.extend(
+            [
+                "--write-sub",
+                "--write-auto-subs",
+                "--sub-format",
+                "srt",
+                "--sub-lang",
+                language,
+            ]
+        )
+    if download_comments:
+        cmd.append("--write-comments")
+
+    # If we need comments or a transcript (for the title), get the info json.
+    if download_transcript or download_comments:
+        cmd.append("--write-info-json")
+
+    cmd.append(video_url)
     run_yt_dlp(cmd)
 
-    # Look for files like <video_id>.<lang>.srt
-    possible_files = list(work_dir.glob(f"{video_id}.*.srt"))
-    selected_lang = ""
-    subtitle_path: Optional[Path] = None
-    for file in possible_files:
-        suffix_parts = file.name.split(".")
-        if len(suffix_parts) >= 3:
-            lang_code = suffix_parts[-2]  # filename format: <id>.<lang>.srt
-            if lang_code == language:
-                subtitle_path = file
-                selected_lang = lang_code
-                break
-    # If not found, fall back to the first available language
-    if subtitle_path is None and possible_files:
-        subtitle_path = possible_files[0]
-        parts = subtitle_path.name.split(".")
-        selected_lang = parts[-2] if len(parts) >= 3 else language
-
+    # Extract transcript
     transcript = ""
-    if subtitle_path and subtitle_path.exists():
-        with subtitle_path.open("r", encoding="utf-8") as f:
-            contents = f.read()
-        transcript = parse_srt_contents(contents)
+    actual_lang = ""
+    if download_transcript:
+        possible_files = list(work_dir.glob(f"{video_id}.*.srt"))
+        subtitle_path = next(iter(possible_files), None)
+        if subtitle_path and subtitle_path.exists():
+            with subtitle_path.open("r", encoding="utf-8") as f:
+                transcript = parse_srt_contents(f.read())
+            # Extract language from filename, e.g., "video_id.fr.srt"
+            parts = subtitle_path.name.split(".")
+            if len(parts) > 2:
+                actual_lang = parts[-2]
 
-    return selected_lang, transcript
+    # Extract comments and title
+    comments_list: List[Dict[str, str]] = []
+    title = ""
+    if download_transcript or download_comments:
+        if not json_path.exists():
+            raise FileNotFoundError(
+                f"Fichier JSON introuvable : {json_path}. Assurez-vous que yt‑dlp est correctement installé."
+            )
+        with json_path.open("r", encoding="utf-8") as f:
+            info = json.load(f)
+        title = info.get("title", "Titre inconnu")
+        if download_comments:
+            comments_raw = info.get("comments", [])
+            for comment in comments_raw:
+                text = comment.get("text") or comment.get("txt", "")
+                author = comment.get("author", "Auteur inconnu")
+                if text:
+                    comments_list.append(
+                        {"author": author.strip(), "text": text.strip()}
+                    )
+
+    return VideoData(
+        url=video_url,
+        title=title,
+        transcript=transcript,
+        comments=comments_list,
+        actual_lang=actual_lang,
+    )
 
 
 def main() -> None:
@@ -308,6 +286,12 @@ def main() -> None:
     st.set_page_config(
         page_title="Transcripteur YouTube", page_icon="🎬", layout="centered"
     )
+
+    if "videos" not in st.session_state:
+        st.session_state["videos"] = [
+            {"url": "", "download_transcript": True, "download_comments": True}
+        ]
+
     st.title("Récupération de transcript et commentaires YouTube")
 
     st.markdown(
@@ -318,117 +302,141 @@ def main() -> None:
         """
     )
 
-    with st.form("input_form"):
-        url = st.text_input(
-            "Lien de la vidéo YouTube", placeholder="https://www.youtube.com/watch?v=..."
+    lang = st.selectbox(
+        "Langue des sous‑titres",
+        options=["fr", "en", "es", "de", "it"],
+        index=0,
+        help="Choisissez la langue à privilégier pour les sous‑titres.",
+    )
+
+    for i, video in enumerate(st.session_state["videos"]):
+        st.markdown("---")
+        cols = st.columns([0.8, 0.2])
+        video["url"] = cols[0].text_input(
+            f"Lien de la vidéo YouTube #{i + 1}",
+            value=video["url"],
+            key=f"url_{i}",
         )
-        lang = st.selectbox(
-            "Langue des sous‑titres",
-            options=["fr", "en", "es", "de", "it"],
-            index=0,
-            help="Choisissez la langue à privilégier pour les sous‑titres."
-        )
-        download_transcript = st.checkbox(
+        if cols[1].button("🗑️", key=f"delete_{i}"):
+            st.session_state["videos"].pop(i)
+            st.experimental_rerun()
+
+        cols = st.columns(2)
+        video["download_transcript"] = cols[0].checkbox(
             "Télécharger la transcription",
-            value=True,
-            help="Inclure la transcription dans le résultat."
+            value=video["download_transcript"],
+            key=f"transcript_{i}",
         )
-        download_comments = st.checkbox(
+        video["download_comments"] = cols[1].checkbox(
             "Télécharger les commentaires",
-            value=True,
-            help="Inclure les commentaires dans le résultat."
+            value=video["download_comments"],
+            key=f"comments_{i}",
         )
-        submitted = st.form_submit_button("Récupérer")
+
+    st.button("Ajouter une autre vidéo", on_click=lambda: st.session_state["videos"].append(
+        {"url": "", "download_transcript": True, "download_comments": True}
+    ))
+
+    submitted = st.button("Récupérer")
 
     if submitted:
-        if not url:
-            st.error("Merci de fournir une URL valide.")
+        # Filter out empty URLs
+        videos_to_process = [
+            v for v in st.session_state["videos"] if v["url"].strip()
+        ]
+        if not videos_to_process:
+            st.error("Merci de fournir au moins une URL valide.")
             return
-        if not download_transcript and not download_comments:
-            st.error(
-                "Veuillez sélectionner au moins une option de téléchargement."
-            )
-            return
+
+        # Check that at least one download option is selected for each video
+        for video in videos_to_process:
+            if not video["download_transcript"] and not video["download_comments"]:
+                st.error(
+                    f"Pour la vidéo {video['url']}, veuillez sélectionner au moins une option de téléchargement."
+                )
+                return
         try:
+            all_video_data = []
             with tempfile.TemporaryDirectory() as tmpdir_str:
                 tmpdir = Path(tmpdir_str)
+                for i, video in enumerate(videos_to_process, 1):
+                    with st.spinner(
+                        f"Traitement de la vidéo {i}/{len(videos_to_process)}..."
+                    ):
+                        video_data = fetch_video_data(
+                            video["url"],
+                            tmpdir,
+                            lang,
+                            video["download_transcript"],
+                            video["download_comments"],
+                        )
+                        all_video_data.append(video_data)
 
-                if download_comments:
-                    with st.spinner("Téléchargement des commentaires..."):
-                        comments = fetch_comments(url, tmpdir)
+            st.success("Récupération terminée !")
+
+            notification_sound = generate_notification_sound()
+            audio_base64 = base64.b64encode(notification_sound).decode()
+            audio_html = f'<audio autoplay><source src="data:audio/wav;base64,{audio_base64}" type="audio/wav"></audio>'
+            st.markdown(audio_html, unsafe_allow_html=True)
+
+            # --- Merged Transcripts ---
+            any_transcript_needed = any(
+                v["download_transcript"] for v in videos_to_process
+            )
+            if any_transcript_needed:
+                merged_transcript = ""
+                for data in all_video_data:
+                    if data.transcript:
+                        merged_transcript += f"--- Transcription pour '{data.title}' ---\n"
+                        merged_transcript += f"URL: {data.url}\n\n"
+                        merged_transcript += data.transcript + "\n\n"
+
+                st.subheader("Toutes les transcriptions")
+                if merged_transcript:
+                    st.download_button(
+                        label="Télécharger toutes les transcriptions",
+                        data=merged_transcript,
+                        file_name="transcriptions_fusionnees.txt",
+                        mime="text/plain",
+                    )
+                    st.text_area(
+                        "Transcriptions fusionnées",
+                        value=merged_transcript,
+                        height=300,
+                    )
                 else:
-                    comments = []
+                    st.warning("Aucune transcription n'a été trouvée.")
 
-                if download_transcript:
-                    with st.spinner("Téléchargement de la transcription..."):
-                        actual_lang, transcript = fetch_transcript(
-                            url, tmpdir, lang
-                        )
+            # --- Merged Comments ---
+            any_comments_needed = any(
+                v["download_comments"] for v in videos_to_process
+            )
+            if any_comments_needed:
+                merged_comments = ""
+                for data in all_video_data:
+                    if data.comments:
+                        merged_comments += f"--- Commentaires pour '{data.title}' ---\n"
+                        merged_comments += f"URL: {data.url}\n\n"
+                        for comment in data.comments:
+                            merged_comments += (
+                                f"Auteur: {comment['author']}\n{comment['text']}\n\n"
+                            )
+
+                st.subheader("Tous les commentaires")
+                if merged_comments:
+                    st.download_button(
+                        label="Télécharger tous les commentaires",
+                        data=merged_comments,
+                        file_name="commentaires_fusionnes.txt",
+                        mime="text/plain",
+                    )
+                    st.text_area(
+                        "Commentaires fusionnés",
+                        value=merged_comments,
+                        height=300,
+                    )
                 else:
-                    transcript = ""
-                    actual_lang = ""
-
-                st.success("Récupération terminée !")
-                
-                # Play notification sound using HTML audio with autoplay
-                # This ensures the sound plays on every submission
-                notification_sound = generate_notification_sound()
-                audio_base64 = base64.b64encode(notification_sound).decode()
-                audio_html = f"""
-                    <audio autoplay>
-                        <source src="data:audio/wav;base64,{audio_base64}" type="audio/wav">
-                    </audio>
-                """
-                st.markdown(audio_html, unsafe_allow_html=True)
-
-                # Display transcript
-                if download_transcript:
-                    if transcript:
-                        st.subheader(f"Transcription ({actual_lang})")
-                        st.download_button(
-                            label="Télécharger la transcription",
-                            data=transcript,
-                            file_name=f"{actual_lang}_transcript.txt",
-                            mime="text/plain",
-                        )
-                        st.text_area(
-                            "Texte du transcript",
-                            value=transcript,
-                            height=300,
-                        )
-                    else:
-                        st.warning("Aucune transcription n'a été trouvée pour cette vidéo.")
-
-                # Display comments
-                if download_comments:
-                    if comments:
-                        st.subheader(f"Commentaires ({len(comments)})")
-                        # Prepare comments for download
-                        comments_text = "\n\n".join(
-                            [
-                                f"Auteur : {c['author']}\n{c['text']}"
-                                for c in comments
-                            ]
-                        )
-                        st.download_button(
-                            label="Télécharger les commentaires",
-                            data=comments_text,
-                            file_name="comments.txt",
-                            mime="text/plain",
-                        )
-                        # Show a sample of the first 100 comments to avoid overloading
-                        max_display = 100
-                        for idx, comment in enumerate(comments[:max_display], start=1):
-                            st.markdown(
-                                f"**Commentaire {idx} (de {comment['author']}) :**\n"
-                                f"> {comment['text']}"
-                            )
-                        if len(comments) > max_display:
-                            st.info(
-                                f"{len(comments) - max_display} autres commentaires non affichés."
-                            )
-                    else:
-                        st.warning("Aucun commentaire n'a pu être récupéré pour cette vidéo.")
+                    st.warning("Aucun commentaire n'a été trouvé.")
         except Exception as exc:
             st.error(f"Une erreur est survenue : {exc}")
 
