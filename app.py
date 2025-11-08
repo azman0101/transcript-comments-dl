@@ -44,10 +44,12 @@ import tempfile
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
+import langdetect
 import numpy as np
 import streamlit as st
+from st_keyup import st_keyup
 
 
 @dataclass
@@ -178,6 +180,41 @@ def parse_srt_contents(contents: str) -> str:
     return "\n".join(transcript_lines)
 
 
+def get_video_language(video_url: str) -> Optional[str]:
+    """
+    Detect the language of a video's title using yt-dlp and langdetect.
+
+    Parameters
+    ----------
+    video_url
+        The URL of the YouTube video.
+
+    Returns
+    -------
+    Optional[str]
+        The detected language code (e.g., 'en', 'fr'), or None if detection fails.
+    """
+    if not video_url:
+        return None
+    try:
+        # Use yt-dlp to get the video title without downloading the video
+        result = subprocess.run(
+            ["yt-dlp", "--get-title", "--", video_url],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        title = result.stdout.strip()
+
+        # Detect the language of the title
+        if title:
+            return langdetect.detect(title)
+    except (subprocess.CalledProcessError, langdetect.lang_detect_exception.LangDetectException):
+        # Handle errors, e.g., video not found, title not in a detectable language
+        return None
+    return None
+
+
 def fetch_video_data(
     video_url: str,
     work_dir: Path,
@@ -302,24 +339,29 @@ def main() -> None:
         """
     )
 
-    lang = st.selectbox(
-        "Langue des sous‑titres",
-        options=["fr", "en", "es", "de", "it"],
-        index=0,
-        help="Choisissez la langue à privilégier pour les sous‑titres.",
-    )
-
+    # Use a single loop for all video inputs
     for i, video in enumerate(st.session_state["videos"]):
         st.markdown("---")
         cols = st.columns([0.8, 0.2])
-        video["url"] = cols[0].text_input(
-            f"Lien de la vidéo YouTube #{i + 1}",
-            value=video["url"],
-            key=f"url_{i}",
-        )
-        if cols[1].button("🗑️", key=f"delete_{i}"):
-            st.session_state["videos"].pop(i)
-            st.experimental_rerun()
+
+        with cols[0]:
+            video_url = st_keyup(
+                f"Lien de la vidéo YouTube #{i + 1}",
+                debounce=3000,
+                value=video.get("url", ""),
+                key=f"url_{i}",
+            )
+        video["url"] = video_url
+
+        if video_url:
+            detected_lang = get_video_language(video_url)
+            if detected_lang:
+                st.session_state["lang"] = detected_lang
+
+        with cols[1]:
+            if st.button("🗑️", key=f"delete_{i}"):
+                st.session_state["videos"].pop(i)
+                st.experimental_rerun()
 
         cols = st.columns(2)
         video["download_transcript"] = cols[0].checkbox(
@@ -332,6 +374,23 @@ def main() -> None:
             value=video["download_comments"],
             key=f"comments_{i}",
         )
+
+    # Language selection dropdown - appears once
+    lang_options = ["fr", "en", "es", "de", "it"]
+    if "lang" in st.session_state and st.session_state["lang"] not in lang_options:
+        lang_options.insert(0, st.session_state["lang"])
+
+    try:
+        lang_index = lang_options.index(st.session_state.get("lang")) if st.session_state.get("lang") else 0
+    except ValueError:
+        lang_index = 0
+
+    lang = st.selectbox(
+        "Langue des sous‑titres",
+        options=lang_options,
+        index=lang_index,
+        help="Choisissez la langue à privilégier pour les sous‑titres.",
+    )
 
     st.button("Ajouter une autre vidéo", on_click=lambda: st.session_state["videos"].append(
         {"url": "", "download_transcript": True, "download_comments": True}
