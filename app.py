@@ -343,28 +343,25 @@ def main() -> None:
     for i, video in enumerate(st.session_state["videos"]):
         st.markdown("---")
         cols = st.columns([0.8, 0.2])
-        video_url = cols[0].text_input(
-            f"Lien de la vidéo YouTube #{i + 1}",
-            value=video.get("url", ""),
-            key=f"url_{i}",
-        )
+
+        with cols[0]:
+            video_url = st_keyup(
+                f"Lien de la vidéo YouTube #{i + 1}",
+                debounce=3000,
+                value=video.get("url", ""),
+                key=f"url_{i}",
+            )
         video["url"] = video_url
 
-        # Debounced language detection for each video
-        debounced_url = st_keyup(
-            video_url,
-            debounce=3000,
-            key=f"debounce_{i}",
-        )
-
-        if debounced_url:
-            detected_lang = get_video_language(debounced_url)
+        if video_url:
+            detected_lang = get_video_language(video_url)
             if detected_lang:
                 st.session_state["lang"] = detected_lang
 
-        if cols[1].button("🗑️", key=f"delete_{i}"):
-            st.session_state["videos"].pop(i)
-            st.experimental_rerun()
+        with cols[1]:
+            if st.button("🗑️", key=f"delete_{i}"):
+                st.session_state["videos"].pop(i)
+                st.experimental_rerun()
 
         cols = st.columns(2)
         video["download_transcript"] = cols[0].checkbox(
