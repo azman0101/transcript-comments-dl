@@ -246,7 +246,7 @@ def fetch_video_data(
     VideoData
         A dataclass containing the title, transcript, and comments.
     """
-    video_id_match = re.search(r"(?<=v=)[^&?]+|(?<=youtu.be/)[^?&]+", video_url)
+    video_id_match = re.search(r"(?<=v=)[^&?]+|(?<=youtu.be/)[^?&]+|(?<=shorts/)[^?&]+", video_url)
     if not video_id_match:
         raise ValueError("Impossible d'extraire l'identifiant de la vidéo.")
     video_id = video_id_match.group(0)
