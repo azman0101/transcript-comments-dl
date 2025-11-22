@@ -1,4 +1,4 @@
-streamlit>=1.26
-yt-dlp>=2025.3.0
+streamlit
+yt-dlp
 streamlit-keyup
 langdetect
