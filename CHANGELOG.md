@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/azman0101/transcript-comments-dl/compare/v1.2.0...v1.2.1) (2025-11-22)
+
+
+### Bug Fixes
+
+* support YouTube Shorts URLs in video ID extraction ([#27](https://github.com/azman0101/transcript-comments-dl/issues/27)) ([1848584](https://github.com/azman0101/transcript-comments-dl/commit/1848584fe3967c7e7f9bf9ddda34d860db2e6cf3))
+
 ## [1.2.0](https://github.com/azman0101/transcript-comments-dl/compare/v1.1.0...v1.2.0) (2025-11-22)
 
 
