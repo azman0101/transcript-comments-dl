@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.0](https://github.com/azman0101/transcript-comments-dl/compare/v1.1.0...v1.2.0) (2025-11-22)
+
+
+### Features
+
+* Add automatic language detection for video URLs ([1802c64](https://github.com/azman0101/transcript-comments-dl/commit/1802c648de1f8c57a5f40381ec4c011da4fdb0cf))
+* Add automatic language detection for video URLs ([879c3ac](https://github.com/azman0101/transcript-comments-dl/commit/879c3ac4f09c8cd8ed8ca005ce213e841b9d8db2))
+* Add automatic language detection for video URLs ([5399ceb](https://github.com/azman0101/transcript-comments-dl/commit/5399cebc4b98cf3e6f7e799a11f6af2cc2d796b4))
+
 ## [1.1.0](https://github.com/azman0101/transcript-comments-dl/compare/v1.0.0...v1.1.0) (2025-10-23)
 
 
