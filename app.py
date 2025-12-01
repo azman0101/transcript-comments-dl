@@ -41,6 +41,7 @@ import os
 import re
 import subprocess
 import tempfile
+import uuid
 import wave
 from dataclasses import dataclass
 from pathlib import Path
@@ -326,8 +327,13 @@ def main() -> None:
 
     if "videos" not in st.session_state:
         st.session_state["videos"] = [
-            {"url": "", "download_transcript": True, "download_comments": True}
+            {"id": str(uuid.uuid4()), "url": "", "download_transcript": True, "download_comments": True}
         ]
+
+    # Ensure all videos have an ID (migration for existing session state)
+    for video in st.session_state["videos"]:
+        if "id" not in video:
+            video["id"] = str(uuid.uuid4())
 
     st.title("Récupération de transcript et commentaires YouTube")
 
@@ -349,7 +355,7 @@ def main() -> None:
                 f"Lien de la vidéo YouTube #{i + 1}",
                 debounce=3000,
                 value=video.get("url", ""),
-                key=f"url_{i}",
+                key=f"url_{video['id']}",
             )
         video["url"] = video_url
 
@@ -359,7 +365,8 @@ def main() -> None:
                 st.session_state["lang"] = detected_lang
 
         with cols[1]:
-            if st.button("🗑️", key=f"delete_{i}"):
+            # Use unique key for delete button
+            if st.button("🗑️", key=f"delete_{video['id']}"):
                 st.session_state["videos"].pop(i)
                 st.experimental_rerun()
 
@@ -367,12 +374,12 @@ def main() -> None:
         video["download_transcript"] = cols[0].checkbox(
             "Télécharger la transcription",
             value=video["download_transcript"],
-            key=f"transcript_{i}",
+            key=f"transcript_{video['id']}",
         )
         video["download_comments"] = cols[1].checkbox(
             "Télécharger les commentaires",
             value=video["download_comments"],
-            key=f"comments_{i}",
+            key=f"comments_{video['id']}",
         )
 
     # Language selection dropdown - appears once
@@ -393,7 +400,7 @@ def main() -> None:
     )
 
     st.button("Ajouter une autre vidéo", on_click=lambda: st.session_state["videos"].append(
-        {"url": "", "download_transcript": True, "download_comments": True}
+        {"id": str(uuid.uuid4()), "url": "", "download_transcript": True, "download_comments": True}
     ))
 
     submitted = st.button("Récupérer")
