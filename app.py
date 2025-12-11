@@ -403,108 +403,121 @@ def main() -> None:
         {"id": str(uuid.uuid4()), "url": "", "download_transcript": True, "download_comments": True}
     ))
 
-    submitted = st.button("Récupérer")
-
-    if submitted:
+    if st.button("Récupérer"):
         # Filter out empty URLs
         videos_to_process = [
             v for v in st.session_state["videos"] if v["url"].strip()
         ]
         if not videos_to_process:
             st.error("Merci de fournir au moins une URL valide.")
-            return
+        else:
+            # Check that at least one download option is selected for each video
+            valid_selection = True
+            for video in videos_to_process:
+                if not video["download_transcript"] and not video["download_comments"]:
+                    st.error(
+                        f"Pour la vidéo {video['url']}, veuillez sélectionner au moins une option de téléchargement."
+                    )
+                    valid_selection = False
+                    break
 
-        # Check that at least one download option is selected for each video
-        for video in videos_to_process:
-            if not video["download_transcript"] and not video["download_comments"]:
-                st.error(
-                    f"Pour la vidéo {video['url']}, veuillez sélectionner au moins une option de téléchargement."
+            if valid_selection:
+                try:
+                    all_video_data = []
+                    with tempfile.TemporaryDirectory() as tmpdir_str:
+                        tmpdir = Path(tmpdir_str)
+                        for i, video in enumerate(videos_to_process, 1):
+                            with st.spinner(
+                                f"Traitement de la vidéo {i}/{len(videos_to_process)}..."
+                            ):
+                                video_data = fetch_video_data(
+                                    video["url"],
+                                    tmpdir,
+                                    lang,
+                                    video["download_transcript"],
+                                    video["download_comments"],
+                                )
+                                all_video_data.append(video_data)
+
+                    # Store results in session state to persist across reruns
+                    st.session_state["fetched_results"] = {
+                        "all_video_data": all_video_data,
+                        "videos_to_process": videos_to_process
+                    }
+
+                    st.success("Récupération terminée !")
+
+                    notification_sound = generate_notification_sound()
+                    audio_base64 = base64.b64encode(notification_sound).decode()
+                    audio_html = f'<audio autoplay><source src="data:audio/wav;base64,{audio_base64}" type="audio/wav"></audio>'
+                    st.markdown(audio_html, unsafe_allow_html=True)
+                except Exception as exc:
+                    st.error(f"Une erreur est survenue : {exc}")
+
+    # Display results if they exist in session state
+    if "fetched_results" in st.session_state:
+        results = st.session_state["fetched_results"]
+        all_video_data = results["all_video_data"]
+        videos_to_process = results["videos_to_process"]
+
+        # --- Merged Transcripts ---
+        any_transcript_needed = any(
+            v["download_transcript"] for v in videos_to_process
+        )
+        if any_transcript_needed:
+            merged_transcript = ""
+            for data in all_video_data:
+                if data.transcript:
+                    merged_transcript += f"--- Transcription pour '{data.title}' ---\n"
+                    merged_transcript += f"URL: {data.url}\n\n"
+                    merged_transcript += data.transcript + "\n\n"
+
+            st.subheader("Toutes les transcriptions")
+            if merged_transcript:
+                st.download_button(
+                    label="Télécharger toutes les transcriptions",
+                    data=merged_transcript,
+                    file_name="transcriptions_fusionnees.txt",
+                    mime="text/plain",
                 )
-                return
-        try:
-            all_video_data = []
-            with tempfile.TemporaryDirectory() as tmpdir_str:
-                tmpdir = Path(tmpdir_str)
-                for i, video in enumerate(videos_to_process, 1):
-                    with st.spinner(
-                        f"Traitement de la vidéo {i}/{len(videos_to_process)}..."
-                    ):
-                        video_data = fetch_video_data(
-                            video["url"],
-                            tmpdir,
-                            lang,
-                            video["download_transcript"],
-                            video["download_comments"],
+                st.text_area(
+                    "Transcriptions fusionnées",
+                    value=merged_transcript,
+                    height=300,
+                )
+            else:
+                st.warning("Aucune transcription n'a été trouvée.")
+
+        # --- Merged Comments ---
+        any_comments_needed = any(
+            v["download_comments"] for v in videos_to_process
+        )
+        if any_comments_needed:
+            merged_comments = ""
+            for data in all_video_data:
+                if data.comments:
+                    merged_comments += f"--- Commentaires pour '{data.title}' ---\n"
+                    merged_comments += f"URL: {data.url}\n\n"
+                    for comment in data.comments:
+                        merged_comments += (
+                            f"Auteur: {comment['author']}\n{comment['text']}\n\n"
                         )
-                        all_video_data.append(video_data)
 
-            st.success("Récupération terminée !")
-
-            notification_sound = generate_notification_sound()
-            audio_base64 = base64.b64encode(notification_sound).decode()
-            audio_html = f'<audio autoplay><source src="data:audio/wav;base64,{audio_base64}" type="audio/wav"></audio>'
-            st.markdown(audio_html, unsafe_allow_html=True)
-
-            # --- Merged Transcripts ---
-            any_transcript_needed = any(
-                v["download_transcript"] for v in videos_to_process
-            )
-            if any_transcript_needed:
-                merged_transcript = ""
-                for data in all_video_data:
-                    if data.transcript:
-                        merged_transcript += f"--- Transcription pour '{data.title}' ---\n"
-                        merged_transcript += f"URL: {data.url}\n\n"
-                        merged_transcript += data.transcript + "\n\n"
-
-                st.subheader("Toutes les transcriptions")
-                if merged_transcript:
-                    st.download_button(
-                        label="Télécharger toutes les transcriptions",
-                        data=merged_transcript,
-                        file_name="transcriptions_fusionnees.txt",
-                        mime="text/plain",
-                    )
-                    st.text_area(
-                        "Transcriptions fusionnées",
-                        value=merged_transcript,
-                        height=300,
-                    )
-                else:
-                    st.warning("Aucune transcription n'a été trouvée.")
-
-            # --- Merged Comments ---
-            any_comments_needed = any(
-                v["download_comments"] for v in videos_to_process
-            )
-            if any_comments_needed:
-                merged_comments = ""
-                for data in all_video_data:
-                    if data.comments:
-                        merged_comments += f"--- Commentaires pour '{data.title}' ---\n"
-                        merged_comments += f"URL: {data.url}\n\n"
-                        for comment in data.comments:
-                            merged_comments += (
-                                f"Auteur: {comment['author']}\n{comment['text']}\n\n"
-                            )
-
-                st.subheader("Tous les commentaires")
-                if merged_comments:
-                    st.download_button(
-                        label="Télécharger tous les commentaires",
-                        data=merged_comments,
-                        file_name="commentaires_fusionnes.txt",
-                        mime="text/plain",
-                    )
-                    st.text_area(
-                        "Commentaires fusionnés",
-                        value=merged_comments,
-                        height=300,
-                    )
-                else:
-                    st.warning("Aucun commentaire n'a été trouvé.")
-        except Exception as exc:
-            st.error(f"Une erreur est survenue : {exc}")
+            st.subheader("Tous les commentaires")
+            if merged_comments:
+                st.download_button(
+                    label="Télécharger tous les commentaires",
+                    data=merged_comments,
+                    file_name="commentaires_fusionnes.txt",
+                    mime="text/plain",
+                )
+                st.text_area(
+                    "Commentaires fusionnés",
+                    value=merged_comments,
+                    height=300,
+                )
+            else:
+                st.warning("Aucun commentaire n'a été trouvé.")
 
     # Display footer with version
     try:
