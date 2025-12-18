@@ -1,5 +1,7 @@
 # Transcripteur et commentaires YouTube avec Streamlit
 
+[![release-please](https://github.com/azman0101/transcript-comments-dl/actions/workflows/release-please.yml/badge.svg)](https://github.com/azman0101/transcript-comments-dl/actions/workflows/release-please.yml)
+
 Ce projet propose une petite application web réalisée avec **Streamlit** pour
 récupérer la transcription (sous‑titres) et les commentaires associés à une
 vidéo YouTube.  L'outil s'appuie sur le programme ligne de commande
