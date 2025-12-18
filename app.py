@@ -41,6 +41,7 @@ import os
 import re
 import subprocess
 import tempfile
+import unicodedata
 import uuid
 import wave
 from dataclasses import dataclass
@@ -62,6 +63,31 @@ class VideoData:
     transcript: str
     comments: List[Dict[str, str]]
     actual_lang: str = ""
+
+
+def create_slug(title: str) -> str:
+    """
+    Create a slug filename from the video title.
+
+    Parameters
+    ----------
+    title : str
+        The title of the YouTube video.
+
+    Returns
+    -------
+    str
+        The slugified title.
+    """
+    # Normalize unicode characters
+    title = unicodedata.normalize('NFKD', title).encode('ascii', 'ignore').decode('utf-8')
+    # Convert to lowercase
+    title = title.lower()
+    # Remove non-alphanumeric characters (except hyphens and underscores and dots)
+    title = re.sub(r'[^\w\s\.-]', '', title)
+    # Replace whitespace with underscores
+    title = re.sub(r'[-\s]+', '_', title)
+    return title.strip('-_')
 
 
 def generate_notification_sound() -> bytes:
@@ -474,10 +500,18 @@ def main() -> None:
 
             st.subheader("Toutes les transcriptions")
             if merged_transcript:
+                # Determine filename
+                # If only one video has a transcript, use its title for the filename
+                videos_with_transcript = [data for data in all_video_data if data.transcript]
+                if len(videos_with_transcript) == 1:
+                    file_name = f"transcription_{create_slug(videos_with_transcript[0].title)}.txt"
+                else:
+                    file_name = "transcriptions_fusionnees.txt"
+
                 st.download_button(
                     label="Télécharger toutes les transcriptions",
                     data=merged_transcript,
-                    file_name="transcriptions_fusionnees.txt",
+                    file_name=file_name,
                     mime="text/plain",
                 )
                 st.text_area(
@@ -505,10 +539,18 @@ def main() -> None:
 
             st.subheader("Tous les commentaires")
             if merged_comments:
+                # Determine filename
+                # If only one video has comments, use its title for the filename
+                videos_with_comments = [data for data in all_video_data if data.comments]
+                if len(videos_with_comments) == 1:
+                    file_name = f"comments_{create_slug(videos_with_comments[0].title)}.txt"
+                else:
+                    file_name = "commentaires_fusionnes.txt"
+
                 st.download_button(
                     label="Télécharger tous les commentaires",
                     data=merged_comments,
-                    file_name="commentaires_fusionnes.txt",
+                    file_name=file_name,
                     mime="text/plain",
                 )
                 st.text_area(
