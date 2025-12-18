@@ -83,8 +83,8 @@ def create_slug(title: str) -> str:
     title = unicodedata.normalize('NFKD', title).encode('ascii', 'ignore').decode('utf-8')
     # Convert to lowercase
     title = title.lower()
-    # Remove non-alphanumeric characters (except hyphens and underscores)
-    title = re.sub(r'[^\w\s-]', '', title)
+    # Remove non-alphanumeric characters (except hyphens and underscores and dots)
+    title = re.sub(r'[^\w\s\.-]', '', title)
     # Replace whitespace with underscores
     title = re.sub(r'[-\s]+', '_', title)
     return title.strip('-_')

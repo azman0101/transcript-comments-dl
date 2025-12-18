@@ -1,13 +1,5 @@
 # Changelog
 
-## [1.2.2](https://github.com/azman0101/transcript-comments-dl/compare/v1.2.1...v1.2.2) (2025-12-11)
-
-
-### Bug Fixes
-
-* ensure unique keys for video inputs to prevent state persistence issues ([#29](https://github.com/azman0101/transcript-comments-dl/issues/29)) ([3b5ff6d](https://github.com/azman0101/transcript-comments-dl/commit/3b5ff6d3327714444c4c407a6ef3b3241afeb3e8))
-* persist fetch results in session state to prevent UI reset on download ([#31](https://github.com/azman0101/transcript-comments-dl/issues/31)) ([9b31862](https://github.com/azman0101/transcript-comments-dl/commit/9b318627712cf559786151e43cd141fe80eaa3c0))
-
 ## [1.2.1](https://github.com/azman0101/transcript-comments-dl/compare/v1.2.0...v1.2.1) (2025-11-22)
 
 
