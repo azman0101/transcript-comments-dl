@@ -51,6 +51,7 @@ from typing import Dict, List, Optional
 import langdetect
 import numpy as np
 import streamlit as st
+import yt_dlp.version
 from st_keyup import st_keyup
 
 
@@ -248,6 +249,7 @@ def fetch_video_data(
     language: str,
     download_transcript: bool,
     download_comments: bool,
+    cookies_content: Optional[str] = None,
 ) -> VideoData:
     """Download all necessary video data using a single yt‑dlp invocation.
 
@@ -267,6 +269,8 @@ def fetch_video_data(
         A boolean indicating whether to download the transcript.
     download_comments:
         A boolean indicating whether to download the comments.
+    cookies_content:
+        Optional content of a cookies.txt file to authenticate with YouTube.
 
     Returns
     -------
@@ -280,6 +284,13 @@ def fetch_video_data(
     json_path = work_dir / f"{video_id}.info.json"
 
     cmd = ["yt-dlp", "--skip-download", "-o", str(work_dir / f"{video_id}")]
+
+    if cookies_content:
+        cookies_path = work_dir / "cookies.txt"
+        with cookies_path.open("w", encoding="utf-8") as f:
+            f.write(cookies_content)
+        cmd.extend(["--cookies", str(cookies_path)])
+
     if download_transcript:
         cmd.extend(
             [
@@ -429,6 +440,10 @@ def main() -> None:
         {"id": str(uuid.uuid4()), "url": "", "download_transcript": True, "download_comments": True}
     ))
 
+    with st.expander("🍪 Cookies / Authentification"):
+        st.info("Si vous rencontrez des erreurs 429 ou 'Sign in', collez ici le contenu de votre fichier cookies.txt (format Netscape).")
+        cookies_content = st.text_area("Contenu du fichier cookies.txt", height=150)
+
     if st.button("Récupérer"):
         # Filter out empty URLs
         videos_to_process = [
@@ -462,6 +477,7 @@ def main() -> None:
                                     lang,
                                     video["download_transcript"],
                                     video["download_comments"],
+                                    cookies_content=cookies_content,
                                 )
                                 all_video_data.append(video_data)
 
@@ -567,7 +583,12 @@ def main() -> None:
             version = f.read().strip()
     except FileNotFoundError:
         version = "development"
-    st.markdown(f"<div style='text-align: center; color: grey;'>Version: {version}</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='text-align: center; color: grey;'>"
+        f"Version: {version} | yt-dlp: {yt_dlp.version.__version__}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
 
 
 if __name__ == "__main__":
