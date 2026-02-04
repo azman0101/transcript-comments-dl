@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/azman0101/transcript-comments-dl/compare/v1.2.2...v1.3.0) (2026-02-04)
+
+
+### Features
+
+* display video metadata (fps, size, duration, etc.) in UI ([#38](https://github.com/azman0101/transcript-comments-dl/issues/38)) ([6313d8d](https://github.com/azman0101/transcript-comments-dl/commit/6313d8df410721ab5afabe69b121a22dd7474e4e))
+
 ## [1.2.2](https://github.com/azman0101/transcript-comments-dl/compare/v1.2.1...v1.2.2) (2025-12-18)
 
 
