@@ -4,7 +4,7 @@ Streamlit Web App to Fetch YouTube Transcript and Comments
 
 This Streamlit application provides a simple user interface for retrieving the
 transcript (subtitles) and top‑level comments from a YouTube video.  It uses
-``yt‑dlp`` under the hood to download the comments and subtitles for a given
+yt‑dlp under the hood to download the comments and subtitles for a given
 video URL.  The resulting transcript and comments are displayed directly in
 the browser and can optionally be downloaded as plain text files.
 
@@ -35,6 +35,7 @@ depending on the number of comments available.
 """
 
 import base64
+import datetime
 import io
 import json
 import os
@@ -46,11 +47,12 @@ import uuid
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import langdetect
 import numpy as np
 import streamlit as st
+import yt_dlp
 import yt_dlp.version
 from st_keyup import st_keyup
 
@@ -156,17 +158,17 @@ def run_yt_dlp(args: List[str]) -> None:
     """Run a yt‑dlp command and raise an exception if it fails.
 
     The function is separated for easier mocking during tests.  It calls
-    ``subprocess.run`` with the provided arguments and checks the return code.
+    subprocess.run with the provided arguments and checks the return code.
 
     Parameters
     ----------
     args:
-        A list of command line arguments to pass directly to ``yt‑dlp``.
+        A list of command line arguments to pass directly to yt‑dlp.
 
     Raises
     ------
     RuntimeError
-        If ``yt‑dlp`` returns a non‑zero exit status.
+        If yt‑dlp returns a non‑zero exit status.
     """
     result = subprocess.run(args, capture_output=True, text=True)
     if result.returncode != 0:
@@ -208,39 +210,68 @@ def parse_srt_contents(contents: str) -> str:
     return "\n".join(transcript_lines)
 
 
-def get_video_language(video_url: str) -> Optional[str]:
+def format_duration(seconds: Optional[int]) -> str:
+    """Format duration in seconds to HH:MM:SS string."""
+    if not seconds:
+        return "N/A"
+    return str(datetime.timedelta(seconds=seconds))
+
+
+def format_large_number(num: Optional[int]) -> str:
+    """Format large numbers (e.g. view counts) to readable strings like 1.5M."""
+    if num is None:
+        return "N/A"
+    if num >= 1_000_000_000:
+        return f"{num / 1_000_000_000:.1f}B"
+    if num >= 1_000_000:
+        return f"{num / 1_000_000:.1f}M"
+    if num >= 1_000:
+        return f"{num / 1_000:.1f}K"
+    return str(num)
+
+
+def format_file_size(bytes_: Optional[int]) -> str:
+    """Format bytes to readable string (KB, MB, GB)."""
+    if bytes_ is None:
+        return "N/A"
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if bytes_ < 1024.0:
+            return f"{bytes_:.1f} {unit}"
+        bytes_ /= 1024.0
+    return f"{bytes_:.1f} TB"
+
+
+def get_video_info(url: str) -> Optional[Dict[str, Any]]:
     """
-    Detect the language of a video's title using yt-dlp and langdetect.
+    Fetch metadata for a given YouTube URL without downloading the video.
 
     Parameters
     ----------
-    video_url
-        The URL of the YouTube video.
+    url : str
+        The YouTube video URL.
 
     Returns
     -------
-    Optional[str]
-        The detected language code (e.g., 'en', 'fr'), or None if detection fails.
+    Optional[Dict[str, Any]]
+        The metadata dictionary or None if fetching fails.
     """
-    if not video_url:
+    if not url:
         return None
-    try:
-        # Use yt-dlp to get the video title without downloading the video
-        result = subprocess.run(
-            ["yt-dlp", "--get-title", "--", video_url],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        title = result.stdout.strip()
 
-        # Detect the language of the title
-        if title:
-            return langdetect.detect(title)
-    except (subprocess.CalledProcessError, langdetect.lang_detect_exception.LangDetectException):
-        # Handle errors, e.g., video not found, title not in a detectable language
+    ydl_opts = {
+        'quiet': True,
+        'skip_download': True,
+        'noplaylist': True,
+        # We don't restrict 'extract_flat' because we need full metadata like duration/fps
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # download=False ensures we only get metadata
+            info = ydl.extract_info(url, download=False)
+            return info
+    except Exception:
         return None
-    return None
 
 
 def fetch_video_data(
@@ -254,7 +285,7 @@ def fetch_video_data(
     """Download all necessary video data using a single yt‑dlp invocation.
 
     This function fetches the video title, transcript, and comments in a
-    single call to ``yt‑dlp`` to improve efficiency by avoiding multiple
+    single call to yt‑dlp to improve efficiency by avoiding multiple
     invocations.
 
     Parameters
@@ -396,10 +427,40 @@ def main() -> None:
             )
         video["url"] = video_url
 
-        if video_url:
-            detected_lang = get_video_language(video_url)
-            if detected_lang:
-                st.session_state["lang"] = detected_lang
+        # Check if URL has changed or metadata is missing for a non-empty URL
+        if video_url and (video_url != video.get("last_fetched_url") or "metadata" not in video):
+            info = get_video_info(video_url)
+            if info:
+                video["metadata"] = info
+                # Language detection
+                title = info.get("title", "")
+                try:
+                    detected_lang = langdetect.detect(title)
+                    if detected_lang:
+                        st.session_state["lang"] = detected_lang
+                except langdetect.lang_detect_exception.LangDetectException:
+                    pass
+            video["last_fetched_url"] = video_url
+
+        # Display metadata if available
+        if video.get("metadata"):
+            meta = video["metadata"]
+            with st.expander("Informations vidéo", expanded=False):
+                m_cols = st.columns(3)
+                with m_cols[0]:
+                    st.write(f"**Titre:** {meta.get('title', 'N/A')}")
+                    st.write(f"**Durée:** {format_duration(meta.get('duration'))}")
+                    st.write(f"**Vues:** {format_large_number(meta.get('view_count'))}")
+                with m_cols[1]:
+                    st.write(f"**Résolution:** {meta.get('resolution', 'N/A')}")
+                    st.write(f"**FPS:** {meta.get('fps', 'N/A')}")
+                    st.write(f"**Date:** {meta.get('upload_date', 'N/A')}")
+                with m_cols[2]:
+                    # File size is often an approximation in metadata
+                    size = meta.get('filesize') or meta.get('filesize_approx')
+                    st.write(f"**Taille (approx):** {format_file_size(size)}")
+                    st.write(f"**Codec:** {meta.get('vcodec', 'N/A')}")
+                    st.write(f"**Ext:** {meta.get('ext', 'N/A')}")
 
         with cols[1]:
             # Use unique key for delete button
